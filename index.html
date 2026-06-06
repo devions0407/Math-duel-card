@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Math Duel: 2-Player Online Edition</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: radial-gradient(circle, #101525 0%, #050811 100%);
+            color: #ffffff;
+            margin: 0;
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #00ffcc;
+            text-shadow: 0 0 10px #00ffcc;
+            margin: 0 0 2px 0;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+        }
+
+        /* Menu Koneksi di awal */
+        #connection-panel {
+            background: rgba(16, 21, 38, 0.95);
+            border: 2px solid #00ffcc;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+            max-width: 400px;
+            width: 90%;
+            z-index: 100;
+            position: absolute;
+        }
+
+        .input-code {
+            padding: 8px;
+            font-size: 1rem;
+            width: 80%;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ff0055;
+            background: #111;
+            color: #fff;
+            text-align: center;
+        }
+
+        #playmat {
+            width: 100%;
+            max-width: 580px;
+            height: 95vh;
+            background: rgba(16, 21, 38, 0.85);
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            position: relative;
+            filter: blur(4px); /* Blur sebelum terhubung */
+            pointer-events: none;
+        }
+
+        .life-points-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid #334466;
+        }
+        .lp-box { width: 45%; position: relative; }
+        .lp-name { font-weight: bold; font-size: 0.75rem; color: #ffaa00; }
+        .lp-value { font-size: 1.3rem; font-weight: bold; color: #ff0055; text-shadow: 0 0 6px #ff0055; }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-20px) scale(1.2); }
+        }
+        .floating-damage { position: absolute; top: -5px; font-size: 1.2rem; font-weight: bold; color: #ff0055; text-shadow: 0 0 6px #000; animation: floatUp 1s forwards; pointer-events: none; z-index: 10;}
+        .floating-heal { position: absolute; top: -5px; font-size: 1.2rem; font-weight: bold; color: #00ffcc; text-shadow: 0 0 6px #000; animation: floatUp 1s forwards; pointer-events: none; z-index: 10;}
+
+        .field-zone {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px dashed #00b4db;
+        }
+        .card-slot {
+            width: 58px;
+            height: 80px;
+            border: 2px dashed #445577;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.5rem;
+            color: #445577;
+            background: rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .duel-log {
+            height: 40px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #ff0055;
+            border-radius: 4px;
+            padding: 4px;
+            overflow-y: auto;
+            font-size: 0.7rem;
+            color: #00ffcc;
+        }
+
+        .card {
+            width: 58px;
+            height: 80px;
+            background: #d27d2d;
+            border: 3px solid #111;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            padding: 2px;
+            box-sizing: border-box;
+            cursor: pointer;
+            transition: transform 0.2s;
+            user-select: none;
+        }
+        .card.spell-card { background: #1d7d67; }
+        .card.trap-card { background: #bc1a6e; }
+        .card.fusion-card { background: linear-gradient(135deg, #4b0082, #8a2be2); border-color: #ff00ff; }
+        .card.back-card { background: radial-gradient(circle, #7d2dd2 0%, #3a0e70 100%); border: 3px solid #fff; cursor: default; }
+
+        .card-inner {
+            border: 1px solid #111;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+        }
+        .card-title { font-size: 0.42rem; background: rgba(255,255,255,0.85); color: #000; padding: 1px; font-weight: bold; text-align: center; overflow: hidden; white-space: nowrap;}
+        .card-artwork { flex-grow: 1; background: #223344; display: flex; justify-content: center; align-items: center; font-size: 1rem; font-weight: bold; color: #fff;}
+        .card-type { font-size: 0.4rem; background: #fff; color: #000; padding: 1px; font-weight: bold; text-align: center;}
+
+        .card.selected { border-color: #00ffcc; box-shadow: 0 0 10px #00ffcc; transform: translateY(-4px); }
+
+        .hand-zone-wrapper { display: flex; flex-direction: column; gap: 2px; }
+        .hand-container {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            min-height: 85px;
+            background: rgba(0,0,0,0.4);
+            padding: 4px;
+            border-radius: 6px;
+            border: 1px solid #334466;
+            align-items: center;
+        }
+        .label-zona { font-size: 0.65rem; color: #aaa; text-transform: uppercase; }
+
+        .btn {
+            padding: 8px;
+            border: 2px solid #ff0055;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            background: linear-gradient(180deg, #ff0055 0%, #990033 100%);
+            margin: 4px;
+        }
+        .btn:disabled { background: #223344; border-color: #445566; color: #667788; cursor: not-allowed; }
+        #fusion-button { background: linear-gradient(180deg, #8a2be2 0%, #4b0082 100%); border-color: #ff00ff; display: none;}
+    </style>
+</head>
+<body>
+
+    <h1>- MATH DUEL: ONLINE MULTIPLAYER -</h1>
+
+    <div id="connection-panel">
+        <h3 style="margin-top:0; color:#00ffcc;">MENU LOBBY</h3>
+        <p style="font-size:0.8rem;">Buat room baru atau masukkan kode milik temanmu:</p>
+        <button class="btn" onclick="createRoom()">1. BUAT ROOM (HOST)</button>
+        <div id="room-display" style="margin: 5px; font-weight:bold; color:#ffaa00;"></div>
+        <hr style="border-color:#334466;">
+        <input type="text" id="join-id" class="input-code" placeholder="Masukkan Kode Room Teman">
+        <button class="btn" style="background:#1d7d67; border-color:#1d7d67;" onclick="joinRoom()">2. GABUNG ROOM</button>
+    </div>
+
+    <div id="playmat">
+        <div class="hand-zone-wrapper">
+            <div id="enemy-label" class="label-zona">Lawan's Hand:</div>
+            <div id="enemy-hand" class="hand-container"></div>
+        </div>
+
+        <div class="life-points-container">
+            <div id="player-box" class="lp-box">
+                <div id="player-label" class="lp-name">KAMU (PLAYER)</div>
+                <div id="player-lp" class="lp-value">8000</div>
+            </div>
+            <div style="color: #00ffcc; font-weight: bold; font-size: 0.7rem;">VS</div>
+            <div id="enemy-box" class="lp-box" style="text-align: right;">
+                <div id="enemy-title-label" class="lp-name">LAWAN</div>
+                <div id="enemy-lp" class="lp-value">8000</div>
+            </div>
+        </div>
+
+        <div id="log" class="duel-log">Status: Menunggu koneksi antar pemain...</div>
+
+        <div class="field-zone">
+            <div id="slot-monster" class="card-slot">MONSTER ZONE</div>
+            <div id="slot-spell" class="card-slot">SPELL ZONE</div>
+            <div id="slot-trap" class="card-slot">SET TRAP ZONE</div>
+        </div>
+
+        <div class="hand-zone-wrapper">
+            <div class="label-zona">Your Hand Deck:</div>
+            <div id="player-hand" class="hand-container"></div>
+        </div>
+
+        <div style="display:flex;">
+            <button id="fusion-button" class="btn" style="flex:1;" onclick="executePythagorasFusion()">PYTHAGORAS FUSION!</button>
+            <button id="duel-button" class="btn" style="flex:1;" onclick="submitTurn()" disabled>SERANG/AKHIRI TURN!</button>
+        </div>
+    </div>
+
+<script>
+    let peer = null;
+    let conn = null;
+    let myRole = ""; // "host" atau "guest"
+    let isMyTurn = false;
+
+    let playerLP = 8000;
+    let enemyLP = 8000;
+    
+    let selectedMonsters = []; 
+    let selectedSpell = null;
+    let playerSetTrap = null;
+    let currentHandData = [];
+
+    // Database Kartu
+    const monsterPool = [
+        { name: "MATHEMATA #2", display: "2", val: 2 },
+        { name: "MATHEMATA #3", display: "3", val: 3 },
+        { name: "MATHEMATA #4", display: "4", val: 4 },
+        { name: "MATHEMATA #5", display: "5", val: 5 },
+        { name: "PRIME OBSIDIAN", display: "7", val: 7 },
+        { name: "NEGATIVUS ALPHA", display: "-3", val: -3 }
+    ];
+    const spellPool = [
+        { name: "RECOVERY FORMULA", display: "+", type: "heal", calc: (n) => n * 10 },
+        { name: "SUBTRACTION BURST", display: "-", type: "attack", calc: (n) => n * 10 },
+        { name: "SQUARE OVERLOAD", display: "x²", type: "attack", calc: (n) => Math.pow(n, 2) * 10 },
+        { name: "FACTORIAL OVERDRIVE", display: "!", type: "attack", calc: (n) => { if(n<0)return 0; let f=1; for(let i=1; i<=Math.min(n,5); i++) f*=i; return f*10; }}
+    ];
+    const trapPool = [
+        { name: "TRAP BOOSTER: IF > 4", display: "IF >4", type: "trap", condStr: "m > 4" },
+        { name: "TRAP REFLECT: IF ODD", display: "IF ODD", type: "trap", condStr: "m % 2 !== 0" }
+    ];
+
+    // --- LOGIKA JARINGAN ONLINE MULTIPLAYER (PEERJS) ---
+
+    function initPeer() {
+        // Membuat ID acak 5 digit untuk Room
+        const randomId = 'math-' + Math.floor(10000 + Math.random() * 90000);
+        peer = new Peer(randomId);
+
+        peer.on('open', (id) => {
+            document.getElementById('room-display').innerText = `KODE ROOM KAMU: ${id}`;
+            addLog(`Sistem P2P aktif dengan ID: ${id}`);
+        });
+
+        peer.on('connection', (connection) => {
+            conn = connection;
+            myRole = "host";
+            isMyTurn = true; // Host jalan duluan
+            setupChatReceiver();
+            startGameMode();
+        });
+    }
+
+    function createRoom() {
+        initPeer();
+    }
+
+    function joinRoom() {
+        const targetId = document.getElementById('join-id').value;
+        if(!targetId) return alert("Masukkan kode terlebih dahulu!");
+        
+        peer = new Peer();
+        peer.on('open', () => {
+            conn = peer.connect(targetId);
+            myRole = "guest";
+            isMyTurn = false; // Guest nunggu giliran
+            setupChatReceiver();
+            startGameMode();
+        });
+    }
+
+    function startGameMode() {
+        document.getElementById('connection-panel').style.display = 'none';
+        document.getElementById('playmat').style.filter = 'none';
+        document.getElementById('playmat').style.pointerEvents = 'auto';
+        
+        document.getElementById('player-label').innerText = myRole === "host" ? "YUGI (HOST)" : "KAIBA (GUEST)";
+        document.getElementById('enemy-title-label').innerText = myRole === "host" ? "KAIBA (GUEST)" : "YUGI (HOST)";
+        
+        addLog(`Terhubung! Kamu adalah ${myRole.toUpperCase()}. ` + (isMyTurn ? "Giliranmu sekarang!" : "Menunggu giliran lawan..."));
+        initDeck();
+    }
+
+    function setupChatReceiver() {
+        conn.on('data', (data) => {
+            if(data.type === "action") {
+                processEnemyAction(data);
+            }
+        });
+        conn.on('close', () => {
+            alert("Koneksi terputus! Temanmu kabur.");
+            location.reload();
+        });
+    }
+
+    // --- LOGIKA GAMEPLAY ENGINE ---
+
+    function initDeck() {
+        document.getElementById('player-hand').innerHTML = '';
+        document.getElementById('enemy-hand').innerHTML = '';
+        document.getElementById('slot-monster').innerHTML = "MONSTER ZONE";
+        document.getElementById('slot-spell').innerHTML = "SPELL ZONE";
+        if(!playerSetTrap) document.getElementById('slot-trap').innerHTML = "SET TRAP ZONE";
+
+        selectedMonsters = [];
+        selectedSpell = null;
+
+        // Render 5 Kartu Lawan secara tertutup (Visual saja)
+        for(let i=0; i<5; i++) {
+            const backCard = document.createElement('div');
+            backCard.classList.add('card', 'back-card');
+            backCard.innerHTML = `<div class="card-inner" style="background:rgba(255,255,255,0.1)"><div style="margin:auto; font-size:1rem; color:#ffaa00;">?</div></div>`;
+            document.getElementById('enemy-hand').appendChild(backCard);
+        }
+
+        // Bagi Kartu Baru untuk Pemain sendiri
+        currentHandData = [];
+        currentHandData.push({ data: monsterPool[Math.floor(Math.random() * monsterPool.length)], type: 'num' });
+        currentHandData.push({ data: monsterPool[Math.floor(Math.random() * monsterPool.length)], type: 'num' });
+        currentHandData.push({ data: spellPool[Math.floor(Math.random() * spellPool.length)], type: 'op' });
+        currentHandData.push({ data: spellPool[Math.floor(Math.random() * spellPool.length)], type: 'op' });
+        currentHandData.push({ data: trapPool[Math.floor(Math.random() * trapPool.length)], type: 'trap' });
+
+        renderPlayerHand();
+        updateButtons();
+    }
+
+    function renderPlayerHand() {
+        const handContainer = document.getElementById('player-hand');
+        handContainer.innerHTML = '';
+
+        currentHandData.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.classList.add('card');
+            if(item.type === 'op') card.classList.add('spell-card');
+            if(item.type === 'trap') card.classList.add('trap-card');
+            if(item.data.isFusion) card.classList.add('fusion-card');
+
+            if(selectedMonsters.includes(item.data) || selectedSpell === item.data) card.classList.add('selected');
+            
+            card.innerHTML = `
+                <div class="card-inner">
+                    <div class="card-title">${item.data.name}</div>
+                    <div class="card-artwork">${item.data.display}</div>
+                    <div class="card-type">[${item.type.toUpperCase()}]</div>
+                </div>
+            `;
+            card.addEventListener('click', () => {
+                if(!isMyTurn) return alert("Bukan giliranmu!");
+                handleCardClick(item, index);
+            });
+            handContainer.appendChild(card);
+        });
+    }
+
+    function handleCardClick(item, index) {
+        if(item.type === 'num') {
+            if(selectedMonsters.includes(item.data)) {
+                selectedMonsters = selectedMonsters.filter(m => m !== item.data);
+            } else {
+                if(selectedMonsters.length < 2) selectedMonsters.push(item.data);
+                else { selectedMonsters.shift(); selectedMonsters.push(item.data); }
+            }
+            if(selectedMonsters.length > 0) {
+                let latest = selectedMonsters[selectedMonsters.length - 1];
+                document.getElementById('slot-monster').innerHTML = `<div class="card ${latest.isFusion?'fusion-card':''}" style="margin:0"><div class="card-inner"><div class="card-title">${latest.name}</div><div class="card-artwork">${latest.display}</div><div class="card-type">[MONSTER]</div></div></div>`;
+            } else document.getElementById('slot-monster').innerHTML = "MONSTER ZONE";
+        } 
+        else if(item.type === 'op') {
+            if(selectedSpell === item.data) { selectedSpell = null; document.getElementById('slot-spell').innerHTML = "SPELL ZONE"; }
+            else {
+                selectedSpell = item.data;
+                document.getElementById('slot-spell').innerHTML = `<div class="card spell-card" style="margin:0"><div class="card-inner"><div class="card-title">${item.data.name}</div><div class="card-artwork">${item.data.display}</div><div class="card-type">[SPELL]</div></div></div>`;
+            }
+        } 
+        else if(item.type === 'trap') {
+            playerSetTrap = item.data;
+            addLog(`Kamu menaruh Jebakan Face-Down.`);
+            document.getElementById('slot-trap').innerHTML = `<div class="card trap-card" style="margin:0; filter:brightness(0.4);"><div class="card-inner"><div style="margin:auto; font-size:0.5rem; color:#fff;">TRAP SET</div></div></div>`;
+            currentHandData.splice(index, 1);
+            renderPlayerHand();
+            updateButtons();
+            return;
+        }
+        renderPlayerHand();
+        updateButtons();
+    }
+
+    function updateButtons() {
+        let isPythagoras = false;
+        if(selectedMonsters.length === 2) {
+            let v1 = selectedMonsters[0].val; let v2 = selectedMonsters[1].val;
+            if((v1===3 && v2===4) || (v1===4 && v2===3)) isPythagoras = true;
+        }
+        document.getElementById('fusion-button').style.display = isPythagoras ? 'block' : 'none';
+        document.getElementById('duel-button').disabled = !(selectedMonsters.length === 1 && selectedSpell) || !isMyTurn;
+    }
+
+    function executePythagorasFusion() {
+        currentHandData = currentHandData.filter(item => !selectedMonsters.includes(item.data));
+        selectedMonsters = []; selectedSpell = null;
+        document.getElementById('slot-monster').innerHTML = "MONSTER ZONE";
+        let fusionMonster = { name: "PYTHAGORAS APEX", display: "5", val: 5, isFusion: true };
+        currentHandData.unshift({ data: fusionMonster, type: 'num' });
+        renderPlayerHand(); updateButtons();
+        addLog("Fusion Berhasil! Kamu memanggil Pythagoras Apex (5)!");
+    }
+
+    // Mengirim Aksi/Serangan ke Pemain Lawan Lewat Jaringan Internet
+    function submitTurn() {
+        if(!isMyTurn) return;
+
+        let monsterVal = selectedMonsters[0].val;
+        let spellName = selectedSpell.name;
+        let displayMonster = selectedMonsters[0].display;
+        let displaySpell = selectedSpell.display;
+
+        // Kirim paket data aksi ke lawan
+        conn.send({
+            type: "action",
+            monsterVal: monsterVal,
+            spellName: spellName,
+            displayMonster: displayMonster,
+            displaySpell: displaySpell
+        });
+
+        addLog(`Kamu meluncurkan kalkulasi kombo [${displayMonster}] ${displaySpell}!`);
+        
+        // Matikan turn kita sementara
+        isMyTurn = false;
+        updateButtons();
+    }
+
+    // Memproses data kiriman dari temanmu saat dia menyerang
+    function processEnemyAction(actionData) {
+        let mVal = actionData.monsterVal;
+        
+        // Cari rumus matematika spell di sisi kita yang sesuai namanya
+        let activeSpell = spellPool.find(s => s.name === actionData.spellName);
+        let finalDmg = activeSpell.calc(mVal);
+        let calcType = activeSpell.type;
+
+        // Tampilkan visual serangan teman di tengah monitor kita
+        document.getElementById('slot-monster').innerHTML = `<div class="card" style="margin:0; background:#930;"><div class="card-inner"><div class="card-title">LAWAN</div><div class="card-artwork">${actionData.displayMonster}</div><div class="card-type">[MONSTER]</div></div></div>`;
+        document.getElementById('slot-spell').innerHTML = `<div class="card spell-card" style="margin:0"><div class="card-inner"><div class="card-title">${activeSpell.name}</div><div class="card-artwork">${activeSpell.display}</div><div class="card-type">[SPELL]</div></div></div>`;
+
+        // Aturan Aljabar Negatif
+        if(finalDmg < 0) {
+            finalDmg = Math.abs(finalDmg);
+            calcType = (calcType === "attack") ? "heal" : "attack";
+        }
+
+        setTimeout(() => {
+            // Evaluasi Jebakan / Trap milik kita
+            let trapTriggered = false;
+            if(calcType === "attack" && playerSetTrap) {
+                let m = mVal;
+                // Menguji kondisi matematika trap
+                if(eval(playerSetTrap.condStr)) {
+                    trapTriggered = true;
+                    addLog(`JEBAKAN AKTIF! Trap [${playerSetTrap.name}] menghadang serangan lawan!`);
+                    document.getElementById('slot-trap').innerHTML = "SET TRAP ZONE";
+                    
+                    if(playerSetTrap.name.includes("REFLECT")) {
+                        enemyLP = Math.max(0, enemyLP - finalDmg);
+                        addLog(`Rumus dipantulkan! Lawan terkena -${finalDmg} LP.`);
+                        triggerVisualEffects(true, finalDmg, false);
+                    } else {
+                        addLog(`Serangan musuh dibatalkan secara mutlak!`);
+                    }
+                    playerSetTrap = null;
+                }
+            }
+
+            if(!trapTriggered) {
+                if(calcType === "heal") {
+                    enemyLP = Math.min(8000, enemyLP + finalDmg);
+                    addLog(`Lawan memulihkan LP mereka sebesar +${finalDmg}.`);
+                    triggerVisualEffects(true, finalDmg, true);
+                } else {
+                    playerLP = Math.max(0, playerLP - finalDmg);
+                    addLog(`Kamu terhantam formula matematika sebesar -${finalDmg} HP!`);
+                    triggerVisualEffects(false, finalDmg, false);
+                }
+            }
+
+            updateUI();
+            if (checkGameOver()) return;
+
+            // Berpindah turn: Sekarang giliran kita untuk menyerang balik!
+            isMyTurn = true;
+            addLog("Sekarang giliranmu! Tarik kartu kombo baru!");
+            initDeck();
+
+        }, 1000);
+    }
+
+    function triggerVisualEffects(isTargetEnemy, amount, isHeal) {
+        const targetBox = document.getElementById(isTargetEnemy ? 'enemy-box' : 'player-box');
+        const floatText = document.createElement('div');
+        floatText.className = isHeal ? 'floating-heal' : 'floating-damage';
+        floatText.innerText = (isHeal ? '+' : '-') + amount;
+        targetBox.appendChild(floatText);
+        setTimeout(() => floatText.remove(), 1000);
+    }
+
+    function updateUI() {
+        document.getElementById('player-lp').innerText = playerLP;
+        document.getElementById('enemy-lp').innerText = enemyLP;
+    }
+
+    function addLog(text) {
+        logEl.innerHTML += `<br>• ${text}`;
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function checkGameOver() {
+        if(enemyLP <= 0) {
+            alert("VICTORY! Logika rumusmu tak tertandingi di internet!");
+            location.reload(); return true;
+        } else if(playerLP <= 0) {
+            alert("DEFEAT! Otak temanmu ternyata lebih cepat menghitung kalkulus!");
+            location.reload(); return true;
+        }
+        return false;
+    }
+</script>
+</body>
+</html>

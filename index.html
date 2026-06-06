@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Math Duel: Ultimate Synchronized Edition</title>
+    <title>Math Duel: Perfect Balance Edition</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
@@ -336,13 +336,10 @@
 
     function setupReceiver() {
         conn.on('data', (data) => {
-            // MENERIMA AKSI SERANGAN LAWAN
             if(data.type === "action") {
                 processEnemyAction(data);
             }
-            // MENERIMA PEMBARUAN NILAI LP YANG SINKRON DARI LAYANAN SEBELAH
             else if(data.type === "sync_lp") {
-                // LP Saya di layar lawan adalah EnemyLP di layar saya, begitupun sebaliknya
                 playerLP = data.senderLP;
                 enemyLP = data.receiverLP;
                 updateUI();
@@ -359,8 +356,8 @@
         if (conn && conn.open) {
             conn.send({
                 type: "sync_lp",
-                senderLP: enemyLP,    // LP lawan di layar saya adalah LP saya di layar dia
-                receiverLP: playerLP   // LP saya di layar saya adalah LP lawan di layar dia
+                senderLP: enemyLP,    
+                receiverLP: playerLP   
             });
         }
     }
@@ -481,35 +478,65 @@
         let spellName = selectedSpell.name;
         let displayMonster = selectedMonsters[0].display;
         let displaySpell = selectedSpell.display;
+        let calcType = selectedSpell.type;
 
+        // JIKA KARTU HEAL: Efeknya langsung berlaku ke diri sendiri saat ini juga
+        if (calcType === "heal") {
+            let healAmount = selectedSpell.calc(monsterVal);
+            playerLP = Math.min(8000, playerLP + healAmount);
+            addLog(`Kamu mengaktifkan formula pemulihan! +${healAmount} LP untukmu.`);
+            triggerVisualEffects(false, healAmount, true);
+            updateUI();
+        }
+
+        // Kirim data ke lawan
         conn.send({
             type: "action",
             monsterVal: monsterVal,
             spellName: spellName,
             displayMonster: displayMonster,
-            displaySpell: displaySpell
+            displaySpell: displaySpell,
+            mode: calcType // memberi tahu lawan ini kartu serang atau heal
         });
 
-        addLog(`Kamu meluncurkan kalkulasi kombo [${displayMonster}] ${displaySpell}!`);
+        if (calcType === "attack") {
+            addLog(`Kamu meluncurkan kalkulasi kombo serang [${displayMonster}] ${displaySpell}!`);
+        }
+
         isMyTurn = false;
         updateButtons();
+
+        // Jika melakukan heal, langsung sync LP terbaru ke layar lawan
+        if (calcType === "heal") {
+            setTimeout(() => {
+                syncLifePointsToEnemy();
+                isMyTurn = true;
+                addLog("Sekarang giliranmu kembali! Tarik kartu baru!");
+                initDeck();
+            }, 1200);
+        }
     }
 
     function processEnemyAction(actionData) {
         let mVal = actionData.monsterVal;
         let activeSpell = spellPool.find(s => s.name === actionData.spellName);
         let finalDmg = activeSpell.calc(mVal);
-        let calcType = activeSpell.type;
+        let calcType = actionData.mode;
 
         document.getElementById('slot-monster').innerHTML = `<div class="card" style="margin:0; background:#930;"><div class="card-inner"><div class="card-title">LAWAN</div><div class="card-artwork">${actionData.displayMonster}</div><div class="card-type">[MONSTER]</div></div></div>`;
         document.getElementById('slot-spell').innerHTML = `<div class="card spell-card" style="margin:0"><div class="card-inner"><div class="card-title">${activeSpell.name}</div><div class="card-artwork">${activeSpell.display}</div><div class="card-type">[SPELL]</div></div></div>`;
 
-        if(finalDmg < 0) {
-            finalDmg = Math.abs(finalDmg);
-            calcType = (calcType === "attack") ? "heal" : "attack";
-        }
-
         setTimeout(() => {
+            // Jika lawan melakukan HEAL di layarnya, layar kita hanya menampilkan animasinya saja
+            if (calcType === "heal") {
+                enemyLP = Math.min(8000, enemyLP + finalDmg);
+                addLog(`Lawan mengaktifkan formula pemulihan sebesar +${finalDmg}.`);
+                triggerVisualEffects(true, finalDmg, true);
+                updateUI();
+                return; // Selesai, tidak perlu mengecek trap karena bukan serangan
+            }
+
+            // Logika pengecekan trap jika tipenya ATTACK
             let trapTriggered = false;
             if(calcType === "attack" && playerSetTrap) {
                 let m = mVal;
@@ -519,7 +546,6 @@
                     document.getElementById('slot-trap').innerHTML = "SET TRAP ZONE";
                     
                     if(playerSetTrap.name.includes("REFLECT")) {
-                        playerLP = Math.max(0, playerLP); // Tetap aman
                         enemyLP = Math.max(0, enemyLP - finalDmg);
                         addLog(`Rumus dipantulkan! Lawan terkena -${finalDmg} LP.`);
                         triggerVisualEffects(true, finalDmg, false);
@@ -530,21 +556,13 @@
                 }
             }
 
-            if(!trapTriggered) {
-                if(calcType === "heal") {
-                    playerLP = Math.min(8000, playerLP + finalDmg);
-                    addLog(`Kamu memulihkan LP sebesar +${finalDmg}.`);
-                    triggerVisualEffects(false, finalDmg, true);
-                } else {
-                    playerLP = Math.max(0, playerLP - finalDmg);
-                    addLog(`Kamu terhantam formula matematika sebesar -${finalDmg} HP!`);
-                    triggerVisualEffects(false, finalDmg, false);
-                }
+            if(!trapTriggered && calcType === "attack") {
+                playerLP = Math.max(0, playerLP - finalDmg);
+                addLog(`Kamu terhantam formula matematika sebesar -${finalDmg} HP!`);
+                triggerVisualEffects(false, finalDmg, false);
             }
 
             updateUI();
-            
-            // CRITICAL SINKRONISASI: Kirim state LP terbaru ke layar lawan
             syncLifePointsToEnemy();
 
             if (checkGameOver()) return;
